@@ -1,0 +1,892 @@
+---
+title: "Tarea Gestión del Riesgo Financiero"
+author: "Rafael Díaz"
+date: "10/30/2020"
+output: 
+  html_document:
+    toc: true
+    theme: flatly
+---
+
+<style>
+.main-container {width: 1200px; max-width:2800px;}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, error = FALSE)
+```
+
+## Renta variable
+
+Para este ejercicio se eligió el mercado accionario  de Japón donde el indice índice bursátil más popular es el Nikkei 225, comúnmente denominado índice Nikkei, compuesto por los 225 valores más líquidos que cotizan en la Bolsa de Tokio. La información de las 5 acciones escogidas fueron extraídas de la pagina [Yahoo! Finance](https://finance.yahoo.com/) que es un servicio de Yahoo enfocada en proporcionar información financiera de los mercados bursátiles. A continuación se describe brevemente las 5 acciones elegidas:
+
++ **Bandai Namco Entertainment Inc. (BNEI)*:* es una empresa japonesa de desarrollo y publicación de videojuegos. La compañía también publica videos, música y otros productos de entretenimiento relacionados con sus propiedades intelectuales.
++ **Canon Inc.:** es una compañía japonesa especializada en productos ópticos y de captura y reproducción de imágenes, que incluye fotografía, vídeo, fotocopiadoras e impresoras. Su sede principal se localiza en Tokio y actualmente es uno de los líderes en el sector de la fotografía y de la óptica. 
++ **Mazda Motor Corporation:** es un fabricante de automóviles japonés, fundada en 1920, con sede principal en Hiroshima, y con plantas en las localidades de Hiroshima, Nishinoura, Nakanoseki y Miyoshi, Japón. En 2010, produjo 1 307 540 automóviles con ventas en China, Japón, Europa, América del Sur y Norteamérica.
++ **Sony Corporation:** comúnmente referida como Sony, es una empresa multinacional japonesa con sede en Tokio y uno de los fabricantes más importantes a nivel mundial en electrónica de consumo: audio y vídeo, computación, fotografía, videojuegos, telefonía móvil, productos profesionales, etcétera.
++ **Yamaha Motor Company Limited:** es una compañía japonesa con sede central en Iwata, Japón, parte de Yamaha Corporation, especializada en fabricación de quads, motocicletas, motonieves, motores fuera de borda, motos de agua y motores de vehículos. Fue establecida en 1955 después de separarse de su matriz Yamaha Corporation.
+
+```{r}
+## Cargo los paquetes
+library(quantmod)
+library(highcharter)
+library(DT)
+library(PerformanceAnalytics)
+library(tidyquant)
+library(highcharter)
+library(plotly)
+library(stargazer)
+library(tidyquant) # To download the data
+library(plotly) # To create interactive charts
+library(timetk) # To manipulate the data series
+library(tidyr)
+library(tibble)
+library(data.table)
+library(scales)
+library(corrplot)
+
+## Leo los archivos
+nikkei225 <- read.csv(file = "Nikkei225.csv")
+canon <- read.csv(file = "Canon.csv") #7751
+mazda <- read.csv(file = "Mazda.csv") #7261
+bandai <- read.csv(file = "Bandai.csv") #7832
+sony <- read.csv(file = "Sony.csv") #6758
+yamaha <- read.csv(file = "Yamaha.csv") #7272
+
+## Convierto los datos en series
+Nikkei225 <- as.xts(x = nikkei225[,2:5], order.by = as.Date(nikkei225$Date))
+Canon <- as.xts(x = canon[,2:5], order.by = as.Date(canon$Date))
+Mazda <- as.xts(x = mazda[,2:5], order.by = as.Date(mazda$Date))
+Bandai <- as.xts(x = bandai[,2:5], order.by = as.Date(bandai$Date))
+Sony <- as.xts(x = sony[,2:5], order.by = as.Date(sony$Date))
+Yamaha <- as.xts(x = yamaha[,2:5], order.by = as.Date(yamaha$Date))
+```
+
+Las fechas tomadas para las acciones fueron desde el 2019-10-21 hasta el 2020-10-21, es decir la información de todo un año, para un total de 244 datos. A continuación se muestra la información de cierre para cada una de las acciones.
+
+### Tabla con las acciones
+
+```{r}
+## Tabla
+Acciones <- as.data.frame(cbind(Nikkei225[,4], Bandai[,4], Canon[,4], Mazda[,4], Sony[,4], Yamaha[,4]))
+colnames(Acciones) <- c("Nikkei","Bandai","Canon","Mazda","Sony","Yamaha")
+DT::datatable(data = Acciones, rownames = TRUE, class = 'cell-border stripe', extensions = 'Buttons',
+              options = list(pageLength = 20, dom = 'Btip', buttons = c('copy', 'csv', 'excel', 'pdf')))
+```
+
+### candlestick
+
+A continuación se muestra un gráfico de velas (candlestick) para cada uno de las acciones y el nikkei con los precios de apertura, el valor mas alto, mas bajo y el precio de cierre.
+
+```{r, fig.width=11, fig.height=7}
+## Graficas
+p1 <- hchart(Nikkei225, name = "Nikkei225", color = "green") %>% hc_title(text = "Nikkei 225 index - OSA")
+p2 <- hchart(Bandai, name = "Bandai", color = "violet") %>% hc_title(text = "Bandai Namco Entertainment Inc.  Equity - JPX")
+p3 <- hchart(Canon, name = "Canon", color = "red") %>% hc_title(text = "Canon Inc. Equity - JPX")
+p4 <- hchart(Mazda, name = "Mazda", color = "blue") %>% hc_title(text = "Mazda motor corporation Equity - JPX")
+p5 <- hchart(Sony, name = "Sony", color = "cyan") %>% hc_title(text = "Sony corporation Equity - JPX")
+p6 <- hchart(Yamaha, name = "Yamaha", color = "pink") %>% hc_title(text = "Yamaha motor Co., Ltd.. Equity - JPX")
+
+hw_grid(list(p1, p2, p3, p4, p5, p6), ncol = 3)
+```
+
+### Rendimientos del mercado
+
+Ahora se cálculo rendimientos $r_i$ de los precios de las acciones, donde $r_i$ se define como:
+
+$$r_i = \ln \left( \frac{P_t}{P_{t-1}} \right)$$
+
+```{r}
+## Rendimientos
+retornos <- Return.calculate(prices = Acciones, method = "log")
+DT::datatable(data = round(retornos,7), colnames = paste("Retornos",colnames(retornos)), rownames = TRUE, 
+              class = 'cell-border stripe', extensions = 'Buttons',
+              options = list(pageLength = 20, dom = 'Btip', buttons = c('copy', 'csv', 'excel', 'pdf')))
+```
+
+## Rendimientos y volatilidad
+
+Ahora se calcula la media de los rendimientos a partir de los datos históricos, como sigue:
+
+$$\mu = \frac{\sum_{i=1}^n r_i}{n} \ \ \ \ \text{y} \ \ \ \ \sigma = \sqrt{\frac{\sum_{i=1}^n (r_i - \mu)^2}{n}}$$
+
+La acción con mayor retorno promedio diario es la acción de Sony con un valor de $0.09\%$. Por otro lado se calculo la volatilidad mediante la desviación estándar de los rendimientos del activo, la cual nos indica que la acción de Mazda es la que representa mayor riesgo de inversión de un activo financiero, mientras la acción de Sony sería la de menor riesgo.
+
+### Tabla con las acciones
+
+```{r}
+`Retorno Promedio` <- colMeans(x = retornos, na.rm = TRUE)
+`Retorno EA` <- ((1 + `Retorno Promedio`)^nrow(retornos)-1)
+Varianza <- apply(X = retornos, MARGIN = 2, FUN = function(x)var(x,na.rm = T))
+Volatilidad <- apply(X = retornos, MARGIN = 2, FUN = function(x)sd(x,na.rm = T))
+covarianzas <- cov(retornos[-1,])[1,]
+Beta <-  covarianzas / var(retornos[-1,1])
+estadisticas <-rbind(`Retorno Promedio`, `Retorno EA`, Varianza, Volatilidad, covarianzas, Beta)
+
+datatable(t(estadisticas)) %>% 
+  formatPercentage(c("Retorno Promedio", "Retorno EA", "Volatilidad"), 2) %>%
+  formatRound(c("Varianza"), digits = 4)
+```
+
+### Medicion del Riesgo Sistematico
+
+El modelo básico que relaciona el riesgo y el rendimiento es el modelo de mercado, desarrollado por Sharpe (1964), quien establece que el rendimiento de todo activo esta relacionado con dos variables: por un lado, las variaciones que se presentan en el mercado en general y, por otro, el de la propia empresa en particular. Estos dos elementos pueden involucrarse utilizando el modelo.
+
+$$r_i = \alpha + \beta r_{mi} + \epsilon_i$$
+
+El rendimiento de un activo $i, r_i$ esta relacionado con el rendimiento del mercado $r_{mi}$ en forma lineal. El coeficiente $\beta$ se considera una medida relativa de riesgo no diversificable.
+
+Para estimar la ecuación para el rendimiento del mercado se suele utilizar el Índice de la Bolsa de Valores. Los estimadores de los parámetros en la ecuación lineal son:
+
+$$ \beta = \frac{cov(r_i, r_m)}{V(r_m)} \\ \alpha = \bar{r_i} - \beta \bar{r}_m$$
+Esta ecuación puede utilizarse para estimar el valor esperando, la varianza y las covarianzas de los rendimientos de un activo:
+
+$$\bar{r}_i = \alpha - \beta \bar{r}_m \\ \sigma_i^2 = \beta_i^2 \sigma_m^2 + \sigma^2_\epsilon \\ \sigma_{ij} = \beta_i \beta_j \sigma^2_m$$
+La expresión de la varianza esta formada por dos componentes $\beta_i^2 \sigma_m^2$, que representa el riesgo de mercado (riesgo sistemático o no diversificable) y no puede disminuirse a través de la diversificación del portafolio y el componente $\sigma^2_\epsilon$, que representa el riesgo especifico del activo, que puede disminuirse a través de la diversificación del portafolio (riesgo no sistemático o diversificable).
+
+En el modelo:
+
++ $\alpha:$ rendimiento autónomo independiente del rendimiento del mercado.
++ $\beta:$ cantidad de variación en el rendimiento de una acción por unidad de variación en el rendimiento del mercado.
+
+**$\beta$ (Beta)**
+
+Es un indicado del riesgo sistemático o de mercado de la inversión en acciones. Permite establecer que tan sensible es la rentabilidad de una acción cuando se presentan movimientos en el rendimiento del mercado.
+
++ $\beta = 1:$ los rendimientos de la acción varían de manera proporcional a los rendimientos del mercado, es decir, la acción presenta el mismo riesgo del mercado.
++ $\beta > 1:$ el rendimiento de la acción varia de manera mas que proporcional con el rendimiento del mercado, es decir, tiene mas riesgo sistemático.
++ $\beta < 1:$ la acción tiene menor riesgo del mercado.
++ $\beta < 0:$ la proporción es inversa; para variaciones positivas en el mercado, la acción tendrá la misma proporción en su variación.
+
+Como se observa, el rendimiento diario de las acciones de Mazda muestra el valor mas alto con un $\beta$ de 1.41 lo cual representa que tiene una sensibilidad mayor a la del mercado, es decir, si el mercado aumenta un $1 \%$, el rendimiento de la acción de Mazda aumenta un $1.41 \%$
+
+## Modelos de regresión
+
+A continuación se muestra la gráfica para cada una de las acciones con la curva de regresión ajustada.
+
+```{r, fig.width=15}
+p1 <- ggplotly(na.omit(retornos) %>%
+                 ggplot(aes(x = Nikkei, y = Bandai)) + geom_point(color = palette_light()[[1]], alpha = 0.5) +
+                 geom_smooth(method = "lm", formula = 'y ~ x') + labs(title = "Rendimientos de las acciones vs Nikkei225") +theme_tq())
+
+p2 <- ggplotly(na.omit(retornos) %>%
+                 ggplot(aes(x = Nikkei, y = Canon)) + geom_point(color = palette_light()[[1]], alpha = 0.5) +
+                 geom_smooth(method = "lm", formula = 'y ~ x') + labs(title = "Rendimientos de las acciones vs Nikkei225") + theme_tq())
+
+p3 <- ggplotly(na.omit(retornos) %>%
+                 ggplot(aes(x = Nikkei, y = Mazda)) + geom_point(color = palette_light()[[1]], alpha = 0.5) +
+                 geom_smooth(method = "lm", formula = 'y ~ x') + labs(title = "Rendimientos de Mazda vs Nikkei225") +theme_tq())
+
+p4 <- ggplotly(na.omit(retornos) %>%
+                 ggplot(aes(x = Nikkei, y = Sony)) + geom_point(color = palette_light()[[1]], alpha = 0.5) +
+                 geom_smooth(method = "lm", formula = 'y ~ x') + labs(title = "Rendimientos de Sony vs Nikkei225") +theme_tq())
+
+p5 <- ggplotly(na.omit(retornos) %>%
+                 ggplot(aes(x = Nikkei, y = Yamaha)) + geom_point(color = palette_light()[[1]], alpha = 0.5) +
+                 geom_smooth(method = "lm", formula = 'y ~ x') + labs(title = "Rendimientos de las acciones vs Nikkei225") +theme_tq())
+
+subplot(list(p1, p2, p3, p4, p5), nrows = 1, margin = 0.03, shareX = TRUE, shareY = FALSE, titleY = TRUE)
+```
+
+En la siguiente tabla se muestran los modelos de regresión lineal simple, donde se estimo la constante (su respectivo error estándar) y el $\beta$ para cada una de las acciones. Además se imprime el coeficiente de determinación $R^2$ por ejemplo para Yamaha indica que el modelo explica en un $65\%$ la variabilidad de los datos. También se cálculo el error de la estimación de los parámetros y el estadístico $F$ de Fisher, para determinar que parámetros son significativos, para un nivel de significancia dado.
+
+```{r, results='asis'}
+mod1 <- lm(formula = Bandai ~ Nikkei, data = retornos)
+mod2 <- lm(formula = Canon ~ Nikkei, data = retornos)
+mod3 <- lm(formula = Mazda ~ Nikkei, data = retornos)
+mod4 <- lm(formula = Sony ~ Nikkei, data = retornos)
+mod5 <- lm(formula = Yamaha ~ Nikkei, data = retornos)
+
+stargazer(mod1, mod2, mod3, mod4, mod5, type = "html", single.row = TRUE)
+```
+
+### Modelo CAPM
+
+El modelo Capital Asset Price Model (CAPM) se puede utilizar para establecer el rendimiento esperado de un determinado activo, si este se encuentra en un portafolio debidamente diversificado. El modelo tiene en cuenta el grado de sensibilidad del activo o riesgo no diversificable, medido a través del coeficiente beta; igualmente el rendimiento esperado del mercado y el de un activo libre de riesgo.
+
+![](CAMP.jpg)
+
+Este modelo parte del supuesto de que el rendimiento de un activo o portafolio es igual a la tasa libre de riesgo más un premio por el riesgo que tiene ese activo o portafolio, medido por el coeficiente beta. El modelo se establece:
+
+$$r_i = r_f + \beta (r_m - r_f)$$
+
+donde:
+
++ $r_i:$ es en rendimiento esperado para el activo $i$.
++ $r_f:$ es el rendimiento para un activo libre de riesgo
++ $r_m:$ es el rendimiento del mercado.
++ $\beta_i:$ es el coeficiente beta para el activo $i$.
+
+El término $(r_m - r_f)$ se conoce como prima por riesgo de mercado, pues indica la prima que el inversionista espera recibir por tomar el riesgo de mercado e invertir en el activo $i$. En la siguiente tabla se muestra los retornos esperados dados por los especialistas, el beta, el retorno requerido y el Alfa o exceso de retorno.
+
+```{r}
+resultado <- data.frame(Retornos = c(14.9,0.03,-4.5136,2.3305,-1.1866,29.156,19.2481), Betas = c(Beta[1], 0, Beta[-1]))
+rownames(resultado)[1:2] <- c("Retornos mercado", "TES")
+resultado$Retorno_Requerido <- round(c(NA_integer_, NA_integer_, resultado[2,1] + resultado$Betas[-c(1:2)] * (resultado[1,1] - resultado[2,1])), 2)
+resultado$Evaluacion <- ifelse(resultado$Retorno_Requerido < resultado$Retornos,"Subvalorada", "Sobrevalorada")
+resultado$Alfa <- resultado$Retornos - resultado$Retorno_Requerido
+nombres <- rownames(resultado)
+resultado <- resultado %>% mutate(Retornos = Retornos / 100, Retorno_Requerido = Retorno_Requerido / 100, Alfa = Alfa / 100)
+rownames(resultado) <- nombres
+
+datatable(resultado, rownames = TRUE) %>% 
+  formatPercentage(c("Retornos", "Retorno_Requerido", "Alfa"), 2) %>% formatRound("Betas", digits = 4)
+```
+
+Se observa que las acciones con mayor retorno esperado serán las acciones de Sony y Yamaha, mientras que las de menor retorno serán Bandai y Mazda. Y la única con alfa positivo es decir exceso de retorno es la acción de Sony.
+
+#### Security Market Line
+
+La línea de seguridad del mercado (SML) es una representación gráfica del modelo de precios de activos de capital (CAPM),que muestra diferentes niveles de riesgo de mercado sistemático, o riesgo de mercado, de varios valores negociables, trazados contra el rendimiento esperado de todo el mercado en un momento dado.
+
+La línea del mercado de valores es una herramienta de evaluación de la inversión derivada del CAPM, un modelo que describe la relación riesgo-retorno de los valores, y se basa en la suposición de que los inversores necesitan ser compensados tanto por el valor temporal del dinero (TVM) como por el nivel de riesgo correspondiente asociado con cualquier inversión, denominada prima de riesgo.
+
+```{r}
+m <- (resultado$Retornos[1] - resultado$Retornos[2]) / (1 - 0)
+y <- function(x){return(m * x + resultado$Retornos[2])}
+
+plot_ly(data = resultado, x = resultado$Betas, y = resultado$Retornos, text = rownames(resultado)) %>%
+  add_markers() %>% add_text(textfont = list(family = "sans serif", size = 14, color = toRGB("grey50")), textposition = "top right") %>% 
+  layout(showlegend = FALSE, title = 'Capital Asset Price Model CAPM',xaxis = list(title = 'Beta'), yaxis = list(title = 'Expected return')) %>%
+  add_segments(x = 1, xend = 1, y = 0, yend = resultado$Retornos[1], line = list(color = "rgb(46, 62, 204)")) %>%
+  add_segments(x = 0, xend = 1, y = resultado$Retornos[1], yend = resultado$Retornos[1], line = list(color = "rgb(46, 62, 204)")) %>%
+  add_segments(x = 0, xend = 1, y = resultado$Retornos[2], yend = resultado$Retornos[1], line = list(color = "rgb(231, 76, 60)")) %>%
+  add_segments(x = 1, xend = 1.7, y = resultado$Retornos[1], yend = y(1.7), line = list(color = "rgb(231, 76, 60)"))
+```
+
+La SML es útil para determinar si la seguridad ofrece un rendimiento esperado favorable en comparación con su nivel de riesgo.
+
+Observamos que la acción de Sony aparece por encima del SML, por lo que se considera subvalorada lo que indica que esta acción ofrece un mayor retorno contra su riesgo inherente. Por el contrario, las acciones de Bandai, Canon y Mazda se ubican por debajo de la SML, es decir se consideran sobrevaloradas en precio porque el rendimiento esperado no supera el riesgo inherente. Finalmente la acción de Yamaha aunque por debajo de la SML es la que más se acerca a la SML, es decir su rendimiento esperado es proporcional al riesgo del activo.
+
+## Optimización del portafolio
+
+Uno de los conceptos básicos de las finanzas es la compensación de rentabilidad de riesgo. Como ejemplo ilustrativo: Si les ofreciera dos inversiones con el mismo riesgo pero con diferentes rendimientos esperados, tomaría la inversión con el mayor rendimiento (una mirada más cercana a lo que se entiende por los términos riesgo y el rendimiento esperado sigue más adelante). Si las dos inversiones tuvieran el mismo rendimiento esperado pero diferentes niveles de riesgo, la mayoría de la gente elegiría la inversión con menos riesgo. Este comportamiento se denomina aversión al riesgo.
+
+Pero, ¿qué sucede si usted tiene que tomar la decisión entre una estrategia de cómo distribuir una inversión de $ 100.000 entre las 30 empresas que figuran en el índice alemán DAX, las 100 empresas de la FTSE de Gran Bretaña, las 500 empresas del S&P 500, o si usted tiene la opción (más realista) para invertir en todas las acciones cotizadas en el mundo? ¿Cómo distribuiría el efectivo para crear una cartera prometedora?
+
+Esta es la pregunta que Markowitz intentó responder en 1952 en su artículo "Portfolio Selection". Ahora, muchos años más tarde, muchos académicos y profesionales han añadido sus respuestas a la discusión, avanzando en la discusión, pero la solución de Markowitz todavía se considera una pieza fundamental de las finanzas.
+
+### Determinar el portafolio de mínima varianza
+
+La obtención del portafolio de mínima varianza se puede determinar mediante la solución de minimizar:
+
+$$\sigma_p^2 = W' \Sigma W \ \ \ \ \ \text{sujeto a} \ \ \ \ \ \bar{r}_{pk} = \sum_{i=1}^m w_i \bar{r}_i, \ \ \sum_{i=1}^m w_i = 1$$
+La solución será el conjunto de portafolios que minimizan la varianza del portafolio para cada nivel de rendimiento esperado y que cumplan la restricción presupuestal. El problema anterior tiene una variable exógena, el rendimiento del portafolio, $\bar{r}_{pk}$ que conduce a un conjunto de portafolios eficiente s y no a una solución única. Cuando no es posible realizar venta en corto debe agregarse la restricción de no negatividad: $w_i \ge 0$. La solución del portafolio busca encontrar una combinación óptima riesgo-rendimiento esperado, de acuerdo con la preferencia del inversionista. Utilizando multiplicadores de Lagrange se tiene, al minimizar:
+
+$$L = \sum_{i = 1}^m \sum_{j = 1}^m w_i w_j \sigma_{ij} + \lambda \left( \sum_{i = 1}^mw_i - 1  \right)$$
+
+Tomando primeras derivadas e igualando a cero, se tiene:
+
+$$\begin{matrix}
+\frac{\partial L}{\partial w_1} = 2w_1 \sigma_1^2 + 2w_2 \sigma_{12} + 2w_3 \sigma_{13} + \cdots + 2w_m \sigma_{1m} + \lambda = 0\\ 
+\frac{\partial L}{\partial w_2} = 2w_1 \sigma_{12} + 2w_2 \sigma_2^2 + 2w_3 \sigma_{23} + \cdots + 2w_m \sigma_{2m} + \lambda = 0\\ 
+\frac{\partial L}{\partial w_3} = 2w_1 \sigma_{13} + 2w_2 \sigma_{23} + 2w_3 \sigma_3^3 + \cdots + 2w_m \sigma_{3m} + \lambda = 0\\ 
+\vdots \\ 
+\frac{\partial L}{\partial w_m} = 2w_1 \sigma_{1m} + 2w_2 \sigma_{2m} + 2w_3 \sigma_{3m} + \cdots + 2w_m \sigma^2_m + \lambda = 0\\
+\frac{\partial L}{\partial \lambda} = w_1 + w_2 + w_3 + \cdots + w_m -1 = 0 \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \
+\end{matrix}$$
+
+
+Que es un sistema de $m + 1$ ecuaciones con $m + 1$ incógnitas, que se puede expresar en forma matricial, el cual puede representarse de la siguiente forma:
+
+$$\begin{bmatrix}
+2 \sigma_1^2 & 2 \sigma_{12} & 2 \sigma_{13} & \cdots & 2 \sigma_{1m} & 1\\ 
+2 \sigma_{12} & 2 \sigma_2^2 & 2 \sigma_{23} & \cdots & 2 \sigma_{2m} & 1\\ 
+2 \sigma_{13} & 2 \sigma_{23} & 2 \sigma_3^2 & \cdots & 2 \sigma_{3m} & 1\\ 
+\vdots & \vdots & \vdots & \vdots & \vdots & \vdots\\ 
+2 \sigma_{1m} & 2 \sigma_{2m} & 2 \sigma_{3m} & \cdots & 2 \sigma^2_m & 1\\ 
+1 & 1 & 1 & \cdots & 1 & 0
+\end{bmatrix} \cdot
+\begin{bmatrix}
+w_1\\ 
+w_2\\ 
+w_3\\ 
+\vdots \\ 
+w_m \\ 
+\lambda
+\end{bmatrix} = 
+\begin{bmatrix}
+0\\ 
+0\\ 
+0\\ 
+\vdots\\ 
+0\\ 
+1
+\end{bmatrix}$$
+
+
+Cuya solución puede obtenerse de la siguiente forma:
+
+$$\begin{bmatrix}
+w_1\\ 
+w_2\\ 
+w_3\\ 
+\vdots \\ 
+w_m \\ 
+\lambda
+\end{bmatrix}
+=
+\begin{bmatrix}
+2 \sigma_1^2 & 2 \sigma_{12} & 2 \sigma_{13} & \cdots & 2 \sigma_{1m} & 1\\ 
+2 \sigma_{12} & 2 \sigma_2^2 & 2 \sigma_{23} & \cdots & 2 \sigma_{2m} & 1\\ 
+2 \sigma_{13} & 2 \sigma_{23} & 2 \sigma_3^2 & \cdots & 2 \sigma_{3m} & 1\\ 
+\vdots & \vdots & \vdots & \vdots & \vdots & \vdots\\ 
+2 \sigma_{1m} & 2 \sigma_{2m} & 2 \sigma_{3m} & \cdots & 2 \sigma^2_m & 1\\ 
+1 & 1 & 1 & \cdots & 1 & 0
+\end{bmatrix} ^{-1}
+\cdot 
+\begin{bmatrix}
+0\\ 
+0\\ 
+0\\ 
+\vdots\\ 
+0\\ 
+1
+\end{bmatrix}$$
+
+Que puede expresarse en forma matricial:
+
+$$W_0 = Z_0^{-1} Q_0$$
+
+El vector solución es único para el portafolio de menor riesgo, entonce, el portafolio de mínimo riesgo y el rendimiento pueden obtenerse así:
+
+$$\bar{r}_{p0} = W_0' \bar{R} \\ \sigma^2_{p0} = W_0' \Sigma W_0$$
+
+donde $W_0$ indica la proporción de los activos en el portafolio de mínimo riesgo.
+
+
+Para este ejercicio se extrajo información desde Yahoo finance, de 5 acciones que cotizan en el mercado búrsatil de Estados Unidos, *Amazon*, *Apple*, *Facebook*, *Netflix* y *AT&T*. Para el período comprendido entre el 1 de enero del 2014 al 31 de Diciembre del 2019, es decir 6 años con un total de 1.509 datos por acción o un total de 7.545 registros para el total de las 5 acciones. A continuación se muestra la tabla con la información obtenida:
+
++ **Amazon (AMZN):** Amazon, Inc. es una compañía estadounidense de comercio electrónico y servicios de computación en la nube a todos los niveles con sede en la ciudad estadounidense de Seattle, Estado de Washington. Su lema es: From A to Z. Es una de las primeras grandes compañías en vender bienes a través de Internet.
++ **Apple Inc (AAPL):** Apple Inc. es una empresa estadounidense que diseña y produce equipos electrónicos, software y servicios en línea. Tiene su sede central en el Apple Park, en California, Estados Unidos. Sus productos de hardware incluyen el teléfono inteligente iPhone, la tableta iPad, el ordenador personal Mac, el reproductor de medios portátil iPod, el reloj inteligente Apple Watch y el reproductor de medios digitales Apple TV. Además de los sistemas operativos iOS, iPadOS, macOS, watchOS y tvOS, el explorador de contenido multimedia iTunes, entre otros y el navegador web Safari.
++ **Facebook (FB):** es una compañía de origen estadounidense que ofrece servicios de redes sociales y medios sociales en línea con sede en Menlo Park, California. Su sitio web fue lanzado el 4 de febrero de 2004 por Mark Zuckerberg, junto con otros estudiantes de la Universidad de Harvard.
++ **Netflix (NFLX):** es una empresa de entretenimiento y un servicio por suscripción estadounidense, que opera a nivel mundial, cuyo servicio principal es la distribución de contenidos audiovisuales a través de una plataforma en línea o servicio de video bajo demanda por streaming.
++ **AT & T (T):** AT&T Communications, LLC es una subsidiaria de AT&T que se enfoca en telefonía fija, inalámbrica, televisión digital, televisión satelital, teléfono de línea fija, teléfono móvil, banda ancha, hogar Seguridad, IPTV, servicios de OTT, seguridad de red y ofertas de televisión de pago, así como soluciones empresariales.
+
+```{r}
+price_data <- tq_get(c('AMZN','AAPL','FB','NFLX','T'),
+                     from = '2014-01-01', to = '2019-12-31',
+                     get = 'stock.prices')
+
+DT::datatable(data = price_data, rownames = TRUE, class = 'cell-border stripe', extensions = 'Buttons',
+              options = list(pageLength = 20, dom = 'Btip', buttons = c('copy', 'csv', 'excel', 'pdf')))
+```
+
+Ahora se gráfica el precio de las acciones para el período 2014 - 2019.
+
+```{r, fig.width=12}
+plot1 <- price_data %>%
+  group_by(symbol) %>%
+  ggplot(aes(x = date, y = adjusted, color = symbol)) +
+  geom_line(size = 1) +
+  labs(title = "Daily Stock Prices",
+       x = "", y = "Adjusted Prices", color = "") +
+  facet_wrap(~ symbol, ncol = 3, scales = "free_y") +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_tq() + scale_color_tq()
+
+ggplotly(plot1)
+```
+
+Se calcula el logaritmo de los rendimiento por año, junto con el promedio de los rendimientos para los 6 años y la desviación estandar o riesgo para cada activo.
+
+```{r, fig.width=12, fig.height=7}
+## Calcular los retornos
+log_ret_tidy <- price_data %>%
+  group_by(symbol) %>%
+  tq_transmute(select = adjusted,
+               mutate_fun = periodReturn,
+               period = 'yearly',
+               col_rename = 'ret',
+               type = 'log', leading = T)
+
+## Se convierte en formato ancho (dcast) y lueg en un time series object
+Retornos <- log_ret_tidy %>% mutate(Year = year(date)) %>% 
+  group_by(symbol, Year) %>% summarise(mean_ret = mean(ret)) %>% spread(symbol, value = mean_ret) %>% 
+  column_to_rownames(var = "Year")
+
+tab1 <- rbind(Retornos,
+  colMeans(Retornos),
+  apply(Retornos,2,sd))
+rownames(tab1)[7:8] <- c("Rend_prom", "Riesgo")
+datatable(tab1) %>% formatPercentage(colnames(tab1), 2)
+
+plot2 <- log_ret_tidy %>%
+  ggplot(aes(x = date, y = ret, fill = symbol)) +
+  geom_col() +
+  geom_hline(yintercept = 0, color = palette_light()[[1]]) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "FANG: Annual Returns",
+       subtitle = "Get annual returns quickly with tq_transmute!",
+       y = "Annual Returns", x = "") + 
+  facet_wrap(~ symbol, ncol = 3, scales = "free_y") +
+  theme_tq() + scale_fill_tq()
+ggplotly(plot2)
+```
+
+
+```{r}
+Portafolio.min.var <- function(Acciones){
+  R <- colMeans(Acciones)
+  n <- ncol(Acciones)
+  Sigma <- cov(Acciones)
+  Z0 <- rbind(cbind(2 * Sigma, rep(1,n)), c(rep(1,n),0))
+  Q0 <- c(rep(0,n),1)
+  W0 <- solve(Z0) %*% Q0
+  
+  Rp <- t(W0[1:n]) %*% R
+  Sigma2 <- t(W0[1:n]) %*% Sigma %*% W0[1:n]
+  return(list(Pesos =   round(W0[1:n,], 5), Rendimientos = round(Rp[1], 5), Riesgo = round(sqrt(Sigma2[1]), 5)))
+}
+
+min_var <- as.data.frame(t(unlist(Portafolio.min.var(Acciones = Retornos))))
+
+datatable(min_var, caption = 'Table 1: Portafolio de mínima varianza.') %>% formatPercentage(colnames(min_var)[-8], 2)
+```
+
+
+
+El resultado muestra que el mayor porcentaje de las acciones que debería comprarse es para Netflix, seguido de Apple y AT & T, mientras que las acciones con pesos negativos como Amazon y Facebook se debería realizar ventas en corto. En este portafolio el rendimiento esperado es de $25.1 \%$ con un riesgo $8.9 \%$. Como vemos el riesgo del portafolio disminuye considerablemente en comparación si se comprara una sola acción. **Nota:** Observe que los pesos de las acciones suman 1 $\sum_{i=1}^m w_i = 1$, y en caso de que el mercado en el cual se negocian las acciones, no sea permitido realizar ventas en corto debe agregarse la restricción de que cada uno de los pesos sea mayor a cero $w_i \geq 0$.
+
+Finalmente se calcula la matriz de correlación entre los retornos de los activos, con el fin de verificar que los activos no estén perfectamente correlacionados pues de ser así no se disminuye el riesgo del portafolio, sino que tendrán el mismo riesgo de los activos.
+
+```{r}
+corrplot(cor(Retornos), method="number", diag = T, type="upper")
+```
+
+
+### Determinación de la frontera eficiente
+
+Para la construcción de la frontera eficiente se deben asignar rendimientos mayores que el rendimiento obtenido para el portafolio de mínimo riesgo $(\bar{r}_{p0})$. Utilizando el multipicador de Lagrange, la función a minimizar es:
+
+$$L = \sum_{i=1}^m \sum_{j=1}^m w_i w_j \sigma_{ij} + \lambda_1 \left( \sum_{i=1}^m w_i \bar{r}_i - \bar{r}_{pk} \right) + \lambda_2 \left(\sum_{i=1}^m w_i - 1 \right)$$
+
+Tomando derivadas e igualando a cero se tiene:
+
+$$\begin{matrix}
+\frac{\partial L}{\partial w_1} = 2w_1 \sigma_1^2 + 2w_2 \sigma_{12} + 2w_3 \sigma_{13} + \cdots + 2w_m \sigma_{1m} + \lambda_1 \bar{r}_1 + \lambda_2 = 0\\ 
+\frac{\partial L}{\partial w_2} = 2w_1 \sigma_{12} + 2w_2 \sigma_2^2 + 2w_3 \sigma_{23} + \cdots + 2w_m \sigma_{2m} + \lambda_1 \bar{r}_2 + \lambda_2 = 0\\ 
+\frac{\partial L}{\partial w_3} = 2w_1 \sigma_{13} + 2w_2 \sigma_{23} + 2w_3 \sigma_3^3 + \cdots + 2w_m \sigma_{3m} + \lambda_1 \bar{r}_3 + \lambda_2 = 0\\ 
+\vdots \\ 
+\frac{\partial L}{\partial w_m} = 2w_1 \sigma_{1m} + 2w_2 \sigma_{2m} + 2w_3 \sigma_{3m} + \cdots + 2w_m \sigma^2_m + \lambda_1 \bar{r}_m + \lambda_2 = 0\\
+\frac{\partial L}{\partial \lambda_1} = \bar{r}_1 w_1 + \bar{r}_2 w_2 + \bar{r}_3 w_3 + \cdots + \bar{r}_m w_m - \bar{r}_{pk} + 0 = 0 \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \\
+\frac{\partial L}{\partial \lambda_2} = w_1 + w_2 + w_3 + \cdots + w_m - 1 = 0 \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \
+\end{matrix}$$
+
+Que forman un conjunto de $m + 2 $ ecuaciones con $m + 2$ incógnitas, que en forma matricial quedaría:
+
+$$\begin{bmatrix}
+2 \sigma_1^2 & 2 \sigma_{12} & 2 \sigma_{13} & \cdots & 2 \sigma_{1m} & \bar{r}_1 & 1\\ 
+2 \sigma_{12} & 2 \sigma_2^2 & 2 \sigma_{23} & \cdots & 2 \sigma_{2m} & \bar{r}_2 &1\\ 
+2 \sigma_{13} & 2 \sigma_{23} & 2 \sigma_3^2 & \cdots & 2 \sigma_{3m} & \bar{r}_3 & 1\\ 
+\vdots & \vdots & \vdots & \vdots & \vdots & \vdots & \vdots\\ 
+2 \sigma_{1m} & 2 \sigma_{2m} & 2 \sigma_{3m} & \cdots & 2 \sigma^2_m & \bar{r}_m & 1\\ 
+\bar{r}_1 & \bar{r}_2 & \bar{r}_3 & \cdots & \bar{r}_m & 0 & 0 \\
+1 & 1 & 1 & \cdots & 1 & 0 & 0
+\end{bmatrix} \cdot
+\begin{bmatrix}
+w_1\\ 
+w_2\\ 
+w_3\\ 
+\vdots \\ 
+w_m \\ 
+\lambda_1 \\
+\lambda_2
+\end{bmatrix} = 
+\begin{bmatrix}
+0\\ 
+0\\ 
+0\\ 
+\vdots\\ 
+0\\
+\bar{r}_{pk}\\
+1
+\end{bmatrix}$$
+
+
+Cuya solución puede obtenerse:
+
+
+$$\begin{bmatrix}
+w_1\\ 
+w_2\\ 
+w_3\\ 
+\vdots \\ 
+w_m \\ 
+\lambda_1 \\
+\lambda_2
+\end{bmatrix} = \begin{bmatrix}
+2 \sigma_1^2 & 2 \sigma_{12} & 2 \sigma_{13} & \cdots & 2 \sigma_{1m} & \bar{r}_1 & 1\\ 
+2 \sigma_{12} & 2 \sigma_2^2 & 2 \sigma_{23} & \cdots & 2 \sigma_{2m} & \bar{r}_2 &1\\ 
+2 \sigma_{13} & 2 \sigma_{23} & 2 \sigma_3^2 & \cdots & 2 \sigma_{3m} & \bar{r}_3 & 1\\ 
+\vdots & \vdots & \vdots & \vdots & \vdots & \vdots & \vdots\\ 
+2 \sigma_{1m} & 2 \sigma_{2m} & 2 \sigma_{3m} & \cdots & 2 \sigma^2_m & \bar{r}_m & 1\\ 
+\bar{r}_1 & \bar{r}_2 & \bar{r}_3 & \cdots & \bar{r}_m & 0 & 0 \\
+1 & 1 & 1 & \cdots & 1 & 0 & 0
+\end{bmatrix}^{-1} \cdot
+\begin{bmatrix}
+0\\ 
+0\\ 
+0\\ 
+\vdots\\ 
+0\\
+\bar{r}_{pk}\\
+1
+\end{bmatrix}$$
+
+
+Que puede expresarse matricialmente como:
+
+$W = Z^{-1} Q$. Que constituye la ponderación para un nivel $\bar{r}_{pk}$ de rendimiento esperado.
+
+Como se expresó anteriormente, esta solución podría llevar ponderaciones negativas (venta en corto). Si se introduce la restricción de no negatividad de las ponderaciones, la solución de la frontera eficiente puede obtenerse utilizando programación cuadrática.
+
+
+```{r}
+Frontera.eficiente <- function(Acciones, TES = 0){
+  R <- colMeans(Acciones)
+  n <- ncol(Acciones)
+  Sigma <- cov(Acciones)
+  Z <- cbind(rbind(2 * Sigma, R, rep(1,n)), c(R, 0, 0), c(rep(1,n),0, 0))
+  
+  rk <- seq(from = min(R), to = max(R) + 0.12, length.out = 100)
+  m <- length(rk)
+  mat <- matrix(data = NA, nrow = m, ncol = ncol(Acciones) + 2)
+  colnames(mat) <- c(colnames(Acciones), "Rendimientos", "Riesgo")
+  for(i in seq_along(rk)){
+    Q <- c(rep(0,n), rk[i], 1)
+    W <- solve(Z) %*% Q
+    Rp <- t(W[1:n]) %*% R
+    SigmaP <- sqrt(t(W[1:n]) %*% Sigma %*% W[1:n])
+    mat[i,] <- c(W[1:n], Rp, SigmaP)
+  }
+  resultado <- as.data.frame(mat)
+  resultado$Ratio <- (resultado$Rendimiento - TES) / resultado$Riesgo
+  return(round(resultado, 5))
+}
+```
+
+
+![](portafolio_tan.png){width=650px}
+
+Ahora se calcula un total de 100 portafolios para definir la frontera eficiente, y se calcula el Ratio de Sharpe para determinar cual es el portafolio ideal o portafolio tangente, donde el $Sharpe \ Ratio = \frac{Rendimiento \ portafolio  \ - \ TES}{Riesgo}$ y TES, representa la tasa de los bonos de Estados Unidos a 90 días (Treasure Bill Rate), que se ubica en $1.5 \%$ para la fecha de la última semana del 2019.
+
+La ratio de Sharpe, debie su nombre a William Forsyth Sharpe, este índice es una medida del exceso de rendimiento por unidad de riesgo de una inversión. La ratio de Sharpe se utiliza para mostrar hasta qué punto el rendimiento de una inversión compensa al inversor por asumir riesgo en su inversión. Cuando se comparan dos inversiones, cada una con un determinado rendimiento esperado $E [R]$ contra el rendimiento del activo de referencia $R_{f}$, la inversión con la ratio de Sharpe más alta proporciona mayor rendimiento para un mismo nivel de riesgo. Los inversionistas suelen inclinarse por inversiones que tengan una ratio de Sharpe alta.
+
+El cálculo del portafolio tangente se muestra a continuación:
+
+```{r}
+valores_portafolio <- Frontera.eficiente(Acciones = Retornos, TES = 0.015)
+
+max_sr <- filter(valores_portafolio, Ratio == max(Ratio))
+
+plot_port <- valores_portafolio %>%
+  ggplot(aes(x = Riesgo, y = Rendimientos, color = Ratio)) +
+  geom_point() +
+  theme_classic() +
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(x = 'Riesgo anualizado',
+       y = 'Retornos anualizados',
+       title = "Optimización del portafolio & Frontera eficiente") +
+  geom_point(aes(x = Riesgo,
+                 y = Rendimientos), data = min_var, color = 'red') +
+  geom_point(aes(x = Riesgo,
+                 y = Rendimientos), data = max_sr, color = 'red') +
+  annotate('text', x = 0.12, y = 0.42, label = "Portafolio Tangente") +
+  annotate('text', x = 0.11, y = 0.1, label = "Portafolio de mínima varianza") +
+  annotate(geom = 'segment', x = 0.1, xend = 0.08908,  y = 0.11, 
+           yend = 0.247, color = 'red', arrow = arrow(type = "open")) +
+  annotate(geom = 'segment', x = 0.12, xend = 0.09525,  y = 0.415, 
+           yend = 0.287, color = 'red', arrow = arrow(type = "open"))
+```
+
+```{r, fig.width=10, fig.height=6}
+ggplotly(plot_port)
+```
+
+Como vemos en la gráfica anterior el portafolio ideal o tangente, debe tener los siguientes pesos:
+
+```{r}
+datatable(max_sr, caption = 'Table 2: Portafolio ideal.') %>% formatPercentage(colnames(max_sr)[-8], 2)
+```
+
+**Nota:** Se verifica que los pesos $\sum_{i=1}^m w_i =1$.
+
+## Bibliografía
+
++ Moscote Flórez, O. (2013). Elementos de estadística en riesgo financiero. Ediciones USTA.
+
+## Anexo Código
+
+```{r, echo=TRUE, eval=FALSE}
+## Cargo los paquetes
+library(quantmod)
+library(highcharter)
+library(DT)
+library(PerformanceAnalytics)
+library(tidyquant)
+library(highcharter)
+library(plotly)
+library(gridExtra)
+library(stargazer)
+
+#---------------------------------------------------------------------------------------------------------------------------------------------#
+
+# -------------------- #
+# -- Renta Variable -- #
+# -------------------- #
+
+## Leo los archivos
+nikkei225 <- read.csv(file = "Nikkei225.csv")
+canon <- read.csv(file = "Canon.csv") #7751
+mazda <- read.csv(file = "Mazda.csv") #7261
+bandai <- read.csv(file = "Bandai.csv") #7832
+sony <- read.csv(file = "Sony.csv") #6758
+yamaha <- read.csv(file = "Yamaha.csv") #7272
+
+## Convierto los datos en series
+Nikkei225 <- as.xts(x = nikkei225[,2:5], order.by = as.Date(nikkei225$Date))
+Canon <- as.xts(x = canon[,2:5], order.by = as.Date(canon$Date))
+Mazda <- as.xts(x = mazda[,2:5], order.by = as.Date(mazda$Date))
+Bandai <- as.xts(x = bandai[,2:5], order.by = as.Date(bandai$Date))
+Sony <- as.xts(x = sony[,2:5], order.by = as.Date(sony$Date))
+Yamaha <- as.xts(x = yamaha[,2:5], order.by = as.Date(yamaha$Date))
+
+## Tabla
+Acciones <- as.data.frame(cbind(Nikkei225[,4], Bandai[,4], Canon[,4], Mazda[,4], Sony[,4], Yamaha[,4]))
+colnames(Acciones) <- c("Nikkei","Bandai","Canon","Mazda","Sony","Yamaha")
+DT::datatable(data = Acciones, rownames = TRUE, class = 'cell-border stripe', extensions = 'Buttons',
+              options = list(pageLength = 20, dom = 'Btip', buttons = c('copy', 'csv', 'excel', 'pdf')))
+
+## Graficas
+p1 <- hchart(Nikkei225, name = "Nikkei225", color = "green") %>% hc_title(text = "Nikkei 225 index - OSA")
+p2 <- hchart(Bandai, name = "Bandai", color = "violet") %>% hc_title(text = "Bandai Namco Entertainment Inc.  Equity - JPX")
+p3 <- hchart(Canon, name = "Canon", color = "red") %>% hc_title(text = "Canon Inc. Equity - JPX")
+p4 <- hchart(Mazda, name = "Mazda", color = "blue") %>% hc_title(text = "Mazda motor corporation Equity - JPX")
+p5 <- hchart(Sony, name = "Sony", color = "cyan") %>% hc_title(text = "Sony corporation Equity - JPX")
+p6 <- hchart(Yamaha, name = "Yamaha", color = "pink") %>% hc_title(text = "Yamaha motor Co., Ltd.. Equity - JPX")
+
+hw_grid(list(p1, p2, p3, p4, p5, p6), ncol = 3)
+
+retornos <- Return.calculate(prices = Acciones, method = "log")
+DT::datatable(data = round(retornos,7), colnames = paste("Retornos",colnames(retornos)), rownames = TRUE, 
+              class = 'cell-border stripe', extensions = 'Buttons',
+              options = list(pageLength = 20, dom = 'Btip', buttons = c('copy', 'csv', 'excel', 'pdf')))
+
+## Rendimientos
+`Retorno Promedio` <- colMeans(x = retornos, na.rm = TRUE)
+`Retorno EA` <- ((1 + `Retorno Promedio`)^nrow(retornos)-1)
+Varianza <- apply(X = retornos, MARGIN = 2, FUN = function(x)var(x,na.rm = T))
+Volatilidad <- apply(X = retornos, MARGIN = 2, FUN = function(x)sd(x,na.rm = T))
+covarianzas <- cov(retornos[-1,])[1,]
+Beta <-  covarianzas / var(retornos[-1,1])
+estadisticas <-rbind(`Retorno Promedio`, `Retorno EA`, Varianza, Volatilidad, covarianzas, Beta)
+
+datatable(t(estadisticas)) %>% 
+  formatPercentage(c("Retorno Promedio", "Retorno EA", "Volatilidad"), 2) %>%
+  formatRound(c("Varianza"), digits = 4)
+
+p1 <- ggplotly(na.omit(retornos) %>%
+                 ggplot(aes(x = Nikkei, y = Bandai)) + geom_point(color = palette_light()[[1]], alpha = 0.5) +
+                 geom_smooth(method = "lm", formula = 'y ~ x') + labs(title = "Rendimientos de las acciones vs Nikkei225") +theme_tq())
+
+p2 <- ggplotly(na.omit(retornos) %>%
+                 ggplot(aes(x = Nikkei, y = Canon)) + geom_point(color = palette_light()[[1]], alpha = 0.5) +
+                 geom_smooth(method = "lm", formula = 'y ~ x') + labs(title = "Rendimientos de las acciones vs Nikkei225") + theme_tq())
+
+p3 <- ggplotly(na.omit(retornos) %>%
+                 ggplot(aes(x = Nikkei, y = Mazda)) + geom_point(color = palette_light()[[1]], alpha = 0.5) +
+                 geom_smooth(method = "lm", formula = 'y ~ x') + labs(title = "Rendimientos de Mazda vs Nikkei225") +theme_tq())
+
+p4 <- ggplotly(na.omit(retornos) %>%
+                 ggplot(aes(x = Nikkei, y = Sony)) + geom_point(color = palette_light()[[1]], alpha = 0.5) +
+                 geom_smooth(method = "lm", formula = 'y ~ x') + labs(title = "Rendimientos de Sony vs Nikkei225") +theme_tq())
+
+p5 <- ggplotly(na.omit(retornos) %>%
+                 ggplot(aes(x = Nikkei, y = Yamaha)) + geom_point(color = palette_light()[[1]], alpha = 0.5) +
+                 geom_smooth(method = "lm", formula = 'y ~ x') + labs(title = "Rendimientos de las acciones vs Nikkei225") +theme_tq())
+
+subplot(list(p1, p2, p3, p4, p5), nrows = 1, margin = 0.03, shareX = TRUE, shareY = FALSE, titleY = TRUE)
+
+mod1 <- lm(formula = Bandai ~ Nikkei, data = retornos)
+mod2 <- lm(formula = Canon ~ Nikkei, data = retornos)
+mod3 <- lm(formula = Mazda ~ Nikkei, data = retornos)
+mod4 <- lm(formula = Sony ~ Nikkei, data = retornos)
+mod5 <- lm(formula = Yamaha ~ Nikkei, data = retornos)
+
+stargazer(mod1, mod2, mod3, mod4, mod5, type = "text", single.row = TRUE)
+
+
+# Name	                     Exp Return
+# Investable Universe (225)	       14.9
+# BANDAI NAMCO HOLDINGS INC	    -4.5136
+# CANON INC	                     2.3305
+# MAZDA MOTOR CORP	            -1.1866
+# SONY CORP	                     29.156
+# YAMAHA MOTOR CO LTD	          19.2481
+
+resultado <- data.frame(Retornos = c(14.9,0.03,-4.5136,2.3305,-1.1866,29.156,19.2481), Betas = c(Beta[1], 0, Beta[-1]))
+rownames(resultado)[1:2] <- c("Retornos mercado", "TES")
+resultado$Retorno_Requerido <- round(c(NA_integer_, NA_integer_, resultado[2,1] + resultado$Betas[-c(1:2)] * (resultado[1,1] - resultado[2,1])), 2)
+resultado$Evaluacion <- ifelse(resultado$Retorno_Requerido < resultado$Retornos,"Subvalorada", "Sobrevalorada")
+resultado$Alfa <- resultado$Retornos - resultado$Retorno_Requerido
+nombres <- rownames(resultado)
+resultado <- resultado %>% mutate(Retornos = Retornos / 100, Retorno_Requerido = Retorno_Requerido / 100, Alfa = Alfa / 100)
+rownames(resultado) <- nombres
+resultado
+
+datatable(resultado, rownames = TRUE) %>% 
+  formatPercentage(c("Retornos", "Retorno_Requerido", "Alfa"), 2) %>% formatRound("Betas", digits = 4)
+
+m <- (resultado$Retornos[1] - resultado$Retornos[2]) / (1 - 0)
+y <- function(x){return(m * x + resultado$Retornos[2])}
+
+plot_ly(data = resultado, x = resultado$Betas, y = resultado$Retornos, text = rownames(resultado)) %>%
+  add_markers() %>% add_text(textfont = list(family = "sans serif", size = 14, color = toRGB("grey50")), textposition = "top right") %>% 
+  layout(showlegend = FALSE, title = 'Capital Asset Price Model CAPM',xaxis = list(title = 'Beta'), yaxis = list(title = 'Expected return')) %>%
+  add_segments(x = 1, xend = 1, y = 0, yend = resultado$Retornos[1], line = list(color = "rgb(46, 62, 204)")) %>%
+  add_segments(x = 0, xend = 1, y = resultado$Retornos[1], yend = resultado$Retornos[1], line = list(color = "rgb(46, 62, 204)")) %>%
+  add_segments(x = 0, xend = 1, y = resultado$Retornos[2], yend = resultado$Retornos[1], line = list(color = "rgb(231, 76, 60)")) %>%
+  add_segments(x = 1, xend = 1.7, y = resultado$Retornos[1], yend = y(1.7), line = list(color = "rgb(231, 76, 60)"))
+
+# -------------------------- #
+# -- Portafolio Eficiente -- #
+# -------------------------- #
+
+# https://www.codingfinance.com/post/2018-05-31-portfolio-opt-in-r/
+
+rm(list = ls())
+library(tidyquant) # To download the data
+library(plotly) # To create interactive charts
+library(timetk) # To manipulate the data series
+library(tidyr)
+library(tibble)
+library(data.table)
+library(scales)
+library(corrplot)
+
+## Descargar los datos desde Yahoo Finance para las acciones:
+
+# Apple Inc (AAPL)
+# Amazon (AMZN)
+# Netflix (NFLX)
+# Exxon Mobil (XOM)
+# AT&T (T)
+# Facebook (FB)
+
+price_data <- tq_get(c('AMZN','AAPL','FB','NFLX','T'),
+                     from = '2014-01-01', to = '2019-12-31',
+                     get = 'stock.prices')
+
+DT::datatable(data = price_data, rownames = TRUE, class = 'cell-border stripe', extensions = 'Buttons',
+              options = list(pageLength = 20, dom = 'Btip', buttons = c('copy', 'csv', 'excel', 'pdf')))
+
+plot1 <- price_data %>%
+  group_by(symbol) %>%
+  ggplot(aes(x = date, y = adjusted, color = symbol)) +
+  geom_line(size = 1) +
+  labs(title = "Daily Stock Prices", x = "", y = "Adjusted Prices", color = "") +
+  facet_wrap(~ symbol, ncol = 3, scales = "free_y") +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_tq() + scale_color_tq()
+
+ggplotly(plot1)
+
+## Calcular los retornos
+log_ret_tidy <- price_data %>%
+  group_by(symbol) %>%
+  tq_transmute(select = adjusted,
+               mutate_fun = periodReturn,
+               period = 'yearly',
+               col_rename = 'ret',
+               type = 'log', leading = T)
+
+
+plot2 <- log_ret_tidy %>%
+  ggplot(aes(x = date, y = ret, fill = symbol)) +
+  geom_col() +
+  geom_hline(yintercept = 0, color = palette_light()[[1]]) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(title = "FANG: Annual Returns",
+       subtitle = "Get annual returns quickly with tq_transmute!",
+       y = "Annual Returns", x = "") + 
+  facet_wrap(~ symbol, ncol = 3, scales = "free_y") +
+  theme_tq() + scale_fill_tq()
+ggplotly(plot2)
+
+## Se convierte en formato ancho (dcast) y lueg en un time series object
+Retornos <- log_ret_tidy %>% mutate(Year = year(date)) %>% 
+  group_by(symbol, Year) %>% summarise(mean_ret = mean(ret)) %>% spread(symbol, value = mean_ret) %>% 
+  column_to_rownames(var = "Year")
+
+corrplot(cor(Retornos), method="number", diag = T, type="upper")
+
+colMeans(Retornos)
+apply(Retornos,2,sd)
+
+Portafolio.min.var <- function(Acciones){
+  R <- colMeans(Acciones)
+  n <- ncol(Acciones)
+  Sigma <- cov(Acciones)
+  Z0 <- rbind(cbind(2 * Sigma, rep(1,n)), c(rep(1,n),0))
+  Q0 <- c(rep(0,n),1)
+  W0 <- solve(Z0) %*% Q0
+  
+  Rp <- t(W0[1:n]) %*% R
+  Sigma2 <- t(W0[1:n]) %*% Sigma %*% W0[1:n]
+  return(list(Pesos =   round(W0[1:n,], 5), Rendimientos = round(Rp[1], 5), Riesgo = round(sqrt(Sigma2[1]), 5)))
+}
+
+Frontera.eficiente <- function(Acciones, TES = 0){
+  R <- colMeans(Acciones)
+  n <- ncol(Acciones)
+  Sigma <- cov(Acciones)
+  Z <- cbind(rbind(2 * Sigma, R, rep(1,n)), c(R, 0, 0), c(rep(1,n),0, 0))
+  
+  rk <- seq(from = min(R), to = max(R) + 0.11, length.out = 100)
+  m <- length(rk)
+  mat <- matrix(data = NA, nrow = m, ncol = ncol(Acciones) + 2)
+  colnames(mat) <- c(colnames(Acciones), "Rendimientos", "Riesgo")
+  for(i in seq_along(rk)){
+    Q <- c(rep(0,n), rk[i], 1)
+    W <- solve(Z) %*% Q
+    Rp <- t(W[1:n]) %*% R
+    SigmaP <- sqrt(t(W[1:n]) %*% Sigma %*% W[1:n])
+    mat[i,] <- c(W[1:n], Rp, SigmaP)
+  }
+  resultado <- as.data.frame(mat)
+  resultado$Ratio <- (resultado$Rendimiento - TES) / resultado$Riesgo
+  return(round(resultado, 5))
+}
+
+min_var <- as.data.frame(t(unlist(Portafolio.min.var(Acciones = Retornos))))
+
+valores_portafolio <- Frontera.eficiente(Acciones = Retornos, TES = 0.015)
+
+max_sr <- filter(valores_portafolio, Ratio == max(Ratio))
+
+
+plot_port <- valores_portafolio %>%
+  ggplot(aes(x = Riesgo, y = Rendimientos, color = Ratio)) +
+  geom_point() +
+  theme_classic() +
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(x = 'Riesgo anualizado',
+       y = 'Retornos anualizados',
+       title = "Optimización del portafolio & Frontera eficiente") +
+  geom_point(aes(x = Riesgo,
+                 y = Rendimientos), data = min_var, color = 'red') +
+  geom_point(aes(x = Riesgo,
+                 y = Rendimientos), data = max_sr, color = 'red') +
+  annotate('text', x = 0.12, y = 0.42, label = "Portafolio Tangente") +
+  annotate('text', x = 0.11, y = 0.1, label = "Portafolio de mínima varianza") +
+  annotate(geom = 'segment', x = 0.1, xend = 0.08908,  y = 0.11, 
+           yend = 0.247, color = 'red', arrow = arrow(type = "open")) +
+  annotate(geom = 'segment', x = 0.12, xend = 0.09525,  y = 0.415, 
+           yend = 0.287, color = 'red', arrow = arrow(type = "open"))
+
+ggplotly(plot_port)
+```
+

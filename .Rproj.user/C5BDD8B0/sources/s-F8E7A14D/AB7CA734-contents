@@ -1,0 +1,51 @@
+
+library(quadprog)
+
+Acciones = Retornos
+
+R <- colMeans(Acciones)
+n <- ncol(Acciones)
+Sigma <- cov(Acciones)
+
+cov2 <- matrix(data = 2 * Sigma, nrow = 5)
+a <- matrix(1, ncol = 5)
+a1 <- rbind(cov2, a)
+
+b <- c(1,1,1,1,1,0)
+b1 <- matrix(b,ncol = 1)
+
+Zeta <- cbind(a1, b1)
+
+Z0 <- rbind(cbind(2 * Sigma, rep(1,n)), c(rep(1,n),0))
+Q0 <- c(rep(0,n),1)
+W0 <- solve(Z0) %*% Q0
+
+Rp <- t(W0[1:n]) %*% R
+Sigma2 <- t(W0[1:n]) %*% Sigma %*% W0[1:n]
+
+mu <- matrix(R)
+N <- length(mu)
+one <- rep(1,N)
+x <- c(one, mu)
+Alo <- matrix(x,ncol=2)
+maxi <- Rp +9*0.00003
+maxi
+ngrid <- 25
+muP <- seq(Rp, maxi, length.out = ngrid)
+SigmaP <- SigmaP2 <- muP
+wP <- wP2 <- matrix(0,N,ngrid)
+IMatrix <- matrix(0,5,5)
+diag(IMatrix) <- 1
+A <- cbind(Alo, IMatrix)
+A
+SigmaP2
+
+for(i in 1:ngrid){
+  i=1
+  f <- rep(0, N)
+  b0 <- c(1,muP[i])
+  b <- c(b0, rep(0.001,N))
+  sol <- solve.QP(Dmat = Sigma,dvec = f,Amat = A,bvec = b, meq=2)
+  wP2[,i] = sol$solution
+  SigmaP2[i] = wP2[,i] %*% Sigma %*% wP2[,i]
+}
